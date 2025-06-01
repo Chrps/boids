@@ -18,8 +18,7 @@ native:
 wasm-docker:
 	docker run --rm -v $(PWD):/src -w /src -u $(shell id -u):$(shell id -g) emscripten/emsdk \
 	em++ $(SRC) -s USE_SDL=2 -s USE_SDL_TTF=2 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -O2 \
-	-o $(BIN_HTML) --preload-file assets
-
+	-o $(BIN_HTML) --preload-file assets --shell-file shell.html
 
 clean:
 	rm -rf $(OUT_DIR)/*

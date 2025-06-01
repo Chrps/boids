@@ -17,7 +17,7 @@ native:
 # WebAssembly build using Docker emscripten image
 wasm-docker:
 	docker run --rm -v $(PWD):/src -w /src -u $(shell id -u):$(shell id -g) emscripten/emsdk \
-	em++ $(SRC) -s USE_SDL=2 -s USE_SDL_TTF=2 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -O2 \
+	em++ $(SRC) -s USE_SDL=2 -s USE_SDL_TTF=2 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -O3 \
 	-o $(BIN_HTML) --preload-file assets --shell-file shell.html
 
 clean:

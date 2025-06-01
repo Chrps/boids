@@ -51,6 +51,9 @@ This script will:
 
 The docs folder is the source for the GitHub Pages deployment (for this repo).
 
+# BUGS / Mistakes
+Grid should scale to visual range!
+
 # 📝 TODO
 
 These are the things I would like to do in the future

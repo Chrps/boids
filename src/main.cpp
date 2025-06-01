@@ -45,15 +45,32 @@ int simulationDelay_y = matchingFactor_y + slider_separation;
 int numBoidsSlider_y = simulationDelay_y + slider_separation;
 int followMouseToggle_y = numBoidsSlider_y + slider_separation;
 
+const int gridCellSize = visualRange;
+int gridCols = (window_width + gridCellSize - 1) / gridCellSize;
+int gridRows = (window_height + gridCellSize - 1) / gridCellSize;
+
+// Grid storing indices of boids
+std::vector<std::vector<int>> grid(gridCols * gridRows);
+
+inline int getGridIndex(int x, int y) {
+    return y * gridCols + x;
+}
+
+void clearGrid() {
+    for (auto& cell : grid) {
+        cell.clear();
+    }
+}
+
 
 Slider visualRangeSlider = { 20, visualRange_y, 200, 20, SliderType::INT, {.intValue = &visualRange}, 1.0f, 200.0f, "Visual Range" };
 Slider minAvoidanceSlider = { 20, minAvoidanceDistance_y, 200, 20, SliderType::INT, {.intValue = &minAvoidanceDistance}, 1.0f, 40.0f, "Min Avoidance Distance" };
-Slider speedLimitSlider = { 20, speedLimit_y, 200, 20, SliderType::FLOAT, {.floatValue = &speedLimit}, 0.1f, 5.0f, "Speed Limit" };
+Slider speedLimitSlider = { 20, speedLimit_y, 200, 20, SliderType::FLOAT, {.floatValue = &speedLimit}, 0.1f, 10.0f, "Speed Limit" };
 Slider centeringFactorSlider = { 20, centeringFactor_y, 200, 20, SliderType::FLOAT, {.floatValue = &centeringFactor}, 0.001f, 0.01f, "Centering Factor" };
 Slider avoidanceFactorSlider = { 20, avoidanceFactor_y, 200, 20, SliderType::FLOAT, {.floatValue = &avoidanceFactor}, 0.001f, 0.1f, "Avoidance Factor" };
 Slider matchingFactorSlider = { 20, matchingFactor_y, 200, 20, SliderType::FLOAT, {.floatValue = &matchingFactor}, 0.001f, 0.1f, "Matching Factor" };
 Slider simulationDelaySlider = { 20, simulationDelay_y, 200, 20, SliderType::INT, {.intValue = &simulationDelayMs}, 0, 50, "Simulation Delay (ms)" };
-Slider numBoidsSlider = {20, numBoidsSlider_y, 200, 20, SliderType::INT, {.intValue = &numBoidsSliderValue}, 1, 500, "Number of Boids"};
+Slider numBoidsSlider = {20, numBoidsSlider_y, 200, 20, SliderType::INT, {.intValue = &numBoidsSliderValue}, 1, 4000, "Number of Boids"};
 Toggle followMouseToggle = { 20, followMouseToggle_y, 50, 50, &follow_mouse, "Follow Mouse"};
 
 struct Boid {
@@ -66,6 +83,15 @@ struct BoidCenter {
 };
 
 std::vector<Boid> boids;
+
+
+void insertBoidToGrid(int boidIndex) {
+    int cellX = static_cast<int>(boids[boidIndex].x) / gridCellSize;
+    int cellY = static_cast<int>(boids[boidIndex].y) / gridCellSize;
+    if (cellX >= 0 && cellX < gridCols && cellY >= 0 && cellY < gridRows) {
+        grid[getGridIndex(cellX, cellY)].push_back(boidIndex);
+    }
+}
 
 // give each boid a random initial position and velocity
 void init_boids() {
@@ -240,6 +266,112 @@ inline float fast_sqrt(float x) {
     return x * fast_inv_sqrt(x);
 }
 
+void update_boid_fast_spatial_partition(int i) {
+    Boid& boid = boids[i];
+    float centerX = 0, centerY = 0;
+    float avgVx = 0, avgVy = 0;
+    float avoidX = 0, avoidY = 0;
+    int neighborCount = 0;
+
+    int cellX = static_cast<int>(boid.x) / gridCellSize;
+    int cellY = static_cast<int>(boid.y) / gridCellSize;
+
+    // Check neighbors in this cell and adjacent cells
+    for (int y = cellY - 1; y <= cellY + 1; ++y) {
+        for (int x = cellX - 1; x <= cellX + 1; ++x) {
+            if (x < 0 || x >= gridCols || y < 0 || y >= gridRows) continue;
+            for (int idx : grid[getGridIndex(x, y)]) {
+                if (idx == i) continue;
+                Boid& other = boids[idx];
+                float dx = other.x - boid.x;
+                float dy = other.y - boid.y;
+                float distSq = dx * dx + dy * dy;
+
+                if (distSq < visualRange * visualRange) {
+                    centerX += other.x;
+                    centerY += other.y;
+                    avgVx += other.vx;
+                    avgVy += other.vy;
+                    neighborCount++;
+
+                    if (distSq < minAvoidanceDistance * minAvoidanceDistance && distSq > 0.0001f) {
+                        float dist = fast_sqrt(distSq);
+                        float force = avoidanceFactor * (minAvoidanceDistance - dist) / dist;
+                        avoidX -= dx * force;
+                        avoidY -= dy * force;
+                    }
+                }
+            }
+        }
+    }
+
+    if (neighborCount > 0) {
+        centerX /= neighborCount;
+        centerY /= neighborCount;
+        avgVx /= neighborCount;
+        avgVy /= neighborCount;
+
+        boid.vx += (centerX - boid.x) * centeringFactor;
+        boid.vy += (centerY - boid.y) * centeringFactor;
+
+        boid.vx += (avgVx - boid.vx) * matchingFactor;
+        boid.vy += (avgVy - boid.vy) * matchingFactor;
+    }
+
+    boid.vx += avoidX;
+    boid.vy += avoidY;
+
+    // Mouse following (separate range check)
+    if (follow_mouse)  // Only apply mouse following if enabled
+    {
+        float dx = mouseX - boid.x;
+        float dy = mouseY - boid.y;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < mouseFollowRange * mouseFollowRange && distSq > 0.0001f) {
+            float dist = fast_sqrt(distSq);
+            dx /= dist;
+            dy /= dist;
+            boid.vx += dx * mouseFollowFactor;
+            boid.vy += dy * mouseFollowFactor;
+        }
+    }
+
+    // Limit speed
+    {
+        float speed = fast_sqrt(boid.vx * boid.vx + boid.vy * boid.vy);
+        if (speed > speedLimit) {
+            boid.vx = (boid.vx / speed) * speedLimit;
+            boid.vy = (boid.vy / speed) * speedLimit;
+        }
+    }
+
+    // Keep inside bounds
+    if (boid.x < margin)        boid.vx += turnFactor;
+    else if (boid.x > window_width - margin)  boid.vx -= turnFactor;
+
+    if (boid.y < margin)        boid.vy += turnFactor;
+    else if (boid.y > window_height - margin) boid.vy -= turnFactor;
+}
+
+void update_boids_fast_spatial_partition() {
+    static Uint32 lastUpdate = 0;
+    Uint32 now = SDL_GetTicks();
+
+    if (now - lastUpdate < simulationDelayMs) return;
+    lastUpdate = now;
+
+    clearGrid();
+    for (int i = 0; i < (int)boids.size(); ++i) {
+        insertBoidToGrid(i);
+    }
+
+    for (int i = 0; i < (int)boids.size(); ++i) {
+        update_boid_fast_spatial_partition(i);
+        boids[i].x += boids[i].vx;
+        boids[i].y += boids[i].vy;
+    }
+}
 
 void update_boid_fast(Boid& boid, int mouseX, int mouseY) {
     float centerX = 0, centerY = 0;
@@ -478,6 +610,19 @@ void render_fps(SDL_Renderer* renderer) {
                 {window_width - 150, 10, 140, 30});
 }
 
+void render_grid(SDL_Renderer* renderer, int cellSize) {
+    SDL_SetRenderDrawColor(renderer, 200, 200, 200, 100); // light gray, semi-transparent
+
+    // Vertical lines
+    for (int x = 0; x <= window_width; x += cellSize) {
+        SDL_RenderDrawLine(renderer, x, 0, x, window_height);
+    }
+    // Horizontal lines
+    for (int y = 0; y <= window_height; y += cellSize) {
+        SDL_RenderDrawLine(renderer, 0, y, window_width, y);
+    }
+}
+
 void main_loop() {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -508,10 +653,13 @@ void main_loop() {
         update_number_of_boids();
     }
 
+    update_boids_fast_spatial_partition();
+
     SDL_SetRenderDrawColor(renderer, 122, 122, 122, 255);
     SDL_RenderClear(renderer);
 
-    update_boids_fast();
+    // render_grid(renderer, gridCellSize);
+
     render_boids_as_triangles();
 
     render_slider(renderer, visualRangeSlider);
@@ -542,8 +690,7 @@ int main() {
 
     srand(time(NULL));
     #ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop(main_loop, 0, 1);
-    emscripten_set_main_loop_timing(EM_TIMING_RAF, 1);
+    emscripten_set_main_loop(main_loop, 0, 1); // Rendering
     #else
     while (running) main_loop();
     #endif

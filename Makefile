@@ -12,7 +12,7 @@ all: native wasm-docker
 
 # Native build on host machine (Linux)
 native:
-	$(CXX) $(SRC) $(SDL_CFLAGS) $(SDL_IMAGE_CFLAGS) $(SDL_LDFLAGS) $(TTF_LDFLAGS) -o $(BIN_NATIVE)
+	$(CXX) $(SRC) $(SDL_CFLAGS) $(SDL_IMAGE_CFLAGS) $(SDL_LDFLAGS) $(TTF_LDFLAGS) -march=native -O3 -o $(BIN_NATIVE)
 
 # WebAssembly build using Docker emscripten image
 wasm-docker:

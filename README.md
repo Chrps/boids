@@ -59,5 +59,5 @@ These are the things I would like to do in the future
    * Make the boids prettier
       * Trails
       * Vectors (showing the different forces)
-   * Optimize the program for the CPU using SIMD or spatial partitioning
+   * Optimize the program for the CPU using SIMD
    * Move to GPU rendering using WebGL + GLSL or WebGPU

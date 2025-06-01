@@ -1,16 +1,12 @@
-# Boids
+# 🐦 Boids
 
 A simple boids simulation written in C++ using SDL2 for rendering.   
 This project can be built for native Linux or as a WebAssembly app to run in the browser.
-
----
 
 ## 🔗 Live Demo
 
 See the simulation in action on GitHub Pages:  
 [https://chrps.github.io/boids/](https://chrps.github.io/boids/)
-
----
 
 ## 🛠 Installation
 

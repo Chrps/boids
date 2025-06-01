@@ -54,3 +54,15 @@ This script will:
    * Remove the native binary game from docs
 
 The docs folder is the source for the GitHub Pages deployment (for this repo).
+
+# 📝 TODO
+
+These are the things I would like to do in the future
+   * Toggle settings visibility
+   * More settings in the UI
+   * Make the boids prettier
+      * Other shape (triangle maybe?)
+      * Trails
+      * Vectors (showing the different forces)
+   * Optimize the program for the CPU
+   * Move to GPU rendering using WebGL + GLSL or WebGPU

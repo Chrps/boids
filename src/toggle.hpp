@@ -1,5 +1,4 @@
-#ifndef TOGGLE_HPP
-#define TOGGLE_HPP
+#pragma once
 
 #include <SDL.h>
 
@@ -11,5 +10,3 @@ struct Toggle {
 
 void render_toggle(SDL_Renderer* renderer, const Toggle& toggle);
 void handle_toggle_event(const SDL_Event& e, const Toggle& toggle);
-
-#endif

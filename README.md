@@ -57,8 +57,7 @@ These are the things I would like to do in the future
    * Toggle settings visibility
    * More settings in the UI
    * Make the boids prettier
-      * Other shape (triangle maybe?)
       * Trails
       * Vectors (showing the different forces)
-   * Optimize the program for the CPU
+   * Optimize the program for the CPU using SIMD or spatial partitioning
    * Move to GPU rendering using WebGL + GLSL or WebGPU

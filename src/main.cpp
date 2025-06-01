@@ -6,6 +6,7 @@
 #include "slider.hpp"
 #include "font.hpp"
 #include "toggle.hpp"
+#include "text.hpp"
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -200,7 +201,6 @@ void keep_boid_in_bounds(Boid& boid) {
     }
 }
 
-
 void update_boids() {
     static Uint32 lastUpdate = 0;
     Uint32 now = SDL_GetTicks();
@@ -222,6 +222,131 @@ void update_boids() {
         limit_speed(boid);
         keep_boid_in_bounds(boid);
 
+        // Update position
+        boid.x += boid.vx;
+        boid.y += boid.vy;
+    }
+}
+
+inline float fast_inv_sqrt(float x) {
+    union { float f; uint32_t i; } conv = { .f = x };
+    conv.i = 0x5f3759df - (conv.i >> 1);
+    conv.f *= 1.5f - (x * 0.5f * conv.f * conv.f);
+    return conv.f;
+}
+
+// Fast square root approximation
+inline float fast_sqrt(float x) {
+    return x * fast_inv_sqrt(x);
+}
+
+
+void update_boid_fast(Boid& boid, int mouseX, int mouseY) {
+    float centerX = 0, centerY = 0;
+    float avgVx = 0, avgVy = 0;
+    float avoidX = 0, avoidY = 0;
+    int neighborCount = 0;
+
+    const float visualRangeSq = visualRange * visualRange;
+    const float minAvoidanceDistSq = minAvoidanceDistance * minAvoidanceDistance;
+
+    for (const auto& other : boids) {
+        if (&other == &boid) continue;
+
+        float ox = other.x;
+        float oy = other.y;
+        float ovx = other.vx;
+        float ovy = other.vy;
+
+        float dx = ox - boid.x;
+        float dy = oy - boid.y;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < visualRangeSq) {
+            // Centering
+            centerX += ox;
+            centerY += oy;
+
+            // Velocity matching
+            avgVx += ovx;
+            avgVy += ovy;
+
+            neighborCount++;
+
+            // Avoidance
+            if (distSq < minAvoidanceDistSq && distSq > 0.0001f) {
+                float dist = fast_sqrt(distSq);
+                float force = avoidanceFactor * (minAvoidanceDistance - dist) / dist;
+                avoidX -= dx * force;
+                avoidY -= dy * force;
+            }
+        }
+    }
+
+
+    // Apply centering and velocity matching if neighbors found
+    if (neighborCount > 0) {
+        centerX /= neighborCount;
+        centerY /= neighborCount;
+        avgVx /= neighborCount;
+        avgVy /= neighborCount;
+
+        boid.vx += (centerX - boid.x) * centeringFactor;
+        boid.vy += (centerY - boid.y) * centeringFactor;
+
+        boid.vx += (avgVx - boid.vx) * matchingFactor;
+        boid.vy += (avgVy - boid.vy) * matchingFactor;
+    }
+
+    // Apply avoidance force
+    boid.vx += avoidX;
+    boid.vy += avoidY;
+
+    // Mouse following (separate range check)
+    if (follow_mouse)  // Only apply mouse following if enabled
+    {
+        float dx = mouseX - boid.x;
+        float dy = mouseY - boid.y;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < mouseFollowRange * mouseFollowRange && distSq > 0.0001f) {
+            float dist = fast_sqrt(distSq);
+            dx /= dist;
+            dy /= dist;
+            boid.vx += dx * mouseFollowFactor;
+            boid.vy += dy * mouseFollowFactor;
+        }
+    }
+
+    // Limit speed
+    {
+        float speed = fast_sqrt(boid.vx * boid.vx + boid.vy * boid.vy);
+        if (speed > speedLimit) {
+            boid.vx = (boid.vx / speed) * speedLimit;
+            boid.vy = (boid.vy / speed) * speedLimit;
+        }
+    }
+
+    // Keep inside bounds
+    if (boid.x < margin)        boid.vx += turnFactor;
+    else if (boid.x > window_width - margin)  boid.vx -= turnFactor;
+
+    if (boid.y < margin)        boid.vy += turnFactor;
+    else if (boid.y > window_height - margin) boid.vy -= turnFactor;
+}
+
+void update_boids_fast() {
+    static Uint32 lastUpdate = 0;
+    Uint32 now = SDL_GetTicks();
+
+    if (now - lastUpdate < simulationDelayMs) {
+        // Skip updating boids if delay not elapsed
+        return;
+    }
+    lastUpdate = now;
+
+    for (auto& boid : boids) {
+        update_boid_fast(boid, mouseX, mouseY);
         // Update position
         boid.x += boid.vx;
         boid.y += boid.vy;
@@ -258,6 +383,62 @@ void render_boids_as_rects() {
     }
 }
 
+void render_boids_as_triangles() {
+    // render boids as triangles pointing in the direction of their velocity but not scaled
+    for (const auto& boid : boids) {
+        // Triangle in local space (pointing up)
+        float size = 10.0f;
+        float halfSize = size / 2.0f;
+        float angle = atan2(boid.vy, boid.vx);
+        SDL_Point points[4];
+
+        float cosA = cos(angle);
+        float sinA = sin(angle);
+        int neighborCount = 0;
+        // Set color based on velocity
+        for (const auto& other : boids) {
+            if (&boid != &other) {
+                float dx = other.x - boid.x;
+                float dy = other.y - boid.y;
+                if (dx*dx + dy*dy < visualRange * visualRange) {
+                    neighborCount++;
+                }
+            }
+        }
+
+        // Map neighborCount to color (0 = blue, maxNeighbors = red)
+        // Clamp maxNeighbors to, say, 20 for color scaling
+        const int maxNeighbors = 30;
+        float t = std::min(neighborCount, maxNeighbors) / static_cast<float>(maxNeighbors);
+
+        Uint8 r = static_cast<Uint8>(t * 255);
+        Uint8 g = 0;
+        Uint8 b = static_cast<Uint8>((1.0f - t) * 255);
+
+
+        // Front tip
+        points[0].x = static_cast<int>(boid.x + cosA * size);
+        points[0].y = static_cast<int>(boid.y + sinA * size);
+
+        // Back left
+        points[1].x = static_cast<int>(boid.x - sinA * halfSize - cosA * halfSize);
+        points[1].y = static_cast<int>(boid.y + cosA * halfSize - sinA * halfSize);
+
+        // Back right
+        points[2].x = static_cast<int>(boid.x + sinA * halfSize - cosA * halfSize);
+        points[2].y = static_cast<int>(boid.y - cosA * halfSize - sinA * halfSize);
+
+        // Back to front tip
+        points[3].x = static_cast<int>(boid.x + cosA * size);
+        points[3].y = static_cast<int>(boid.y + sinA * size);
+
+        SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+        
+        // Draw the triangle
+        SDL_RenderDrawLines(renderer, points, 4);
+    }
+}
+
 void update_number_of_boids() {
     if (numBoidsSliderValue > numBoids) {
         // Add new boids with random init
@@ -275,6 +456,26 @@ void update_number_of_boids() {
         boids.resize(numBoidsSliderValue);
     }
     numBoids = numBoidsSliderValue;
+}
+
+void render_fps(SDL_Renderer* renderer) {
+    static int frameCount = 0;
+    static Uint32 lastTime = SDL_GetTicks();
+    static std::string fpsText = "FPS: 0";
+
+    frameCount++;
+    Uint32 currentTime = SDL_GetTicks();
+
+    if (currentTime - lastTime >= 500) { // Update once per half second
+        float fps = frameCount / ((currentTime - lastTime) / 1000.0f);
+        fpsText = "FPS: " + std::to_string(static_cast<int>(fps));
+        lastTime = currentTime;
+        frameCount = 0;
+    }
+
+    // Render in top right corner
+    render_text(renderer, fpsText, {255, 255, 255, 255}, 
+                {window_width - 150, 10, 140, 30});
 }
 
 void main_loop() {
@@ -310,8 +511,8 @@ void main_loop() {
     SDL_SetRenderDrawColor(renderer, 122, 122, 122, 255);
     SDL_RenderClear(renderer);
 
-    update_boids();
-    render_boids_as_rects();
+    update_boids_fast();
+    render_boids_as_triangles();
 
     render_slider(renderer, visualRangeSlider);
     render_slider(renderer, minAvoidanceSlider);
@@ -322,6 +523,7 @@ void main_loop() {
     render_slider(renderer, simulationDelaySlider);
     render_slider(renderer, numBoidsSlider);
     render_toggle(renderer, followMouseToggle);
+    render_fps(renderer);
 
     SDL_RenderPresent(renderer);
 

@@ -1,7 +1,7 @@
-#ifndef SLIDER_HPP
-#define SLIDER_HPP
 
+#pragma once
 #include <SDL.h>
+#include "text.hpp"
 
 enum class SliderType { INT, FLOAT };
 
@@ -15,6 +15,9 @@ struct Slider {
     float minValue, maxValue;
     const char* label;
     bool dragging = false;
+    SDL_Texture* labelTexture = nullptr;
+    int labelW = 0, labelH = 0;
+
 
     // Helper functions to get/set value as float internally
     float get_value() const {
@@ -34,5 +37,3 @@ struct Slider {
 
 void handle_slider_event(const SDL_Event& e, Slider& slider);
 void render_slider(SDL_Renderer* renderer, Slider& slider);
-
-#endif

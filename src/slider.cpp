@@ -8,25 +8,31 @@ float get_slider_position(const Slider& slider) {
 
 void render_slider(SDL_Renderer* renderer, Slider& slider) {
     SDL_Color textColor = {255, 255, 255, 255};
-    if (slider.label) {
+
+    // Render label (cached texture)
+    if (slider.label && !slider.labelTexture) {
         SDL_Surface* labelSurface = TTF_RenderText_Solid(get_font(), slider.label, textColor);
-        SDL_Texture* labelTexture = SDL_CreateTextureFromSurface(renderer, labelSurface);
+        slider.labelTexture = SDL_CreateTextureFromSurface(renderer, labelSurface);
+        slider.labelW = labelSurface->w;
+        slider.labelH = labelSurface->h;
+        SDL_FreeSurface(labelSurface);
+    }
+    if (slider.labelTexture) {
         SDL_Rect labelRect = {
             slider.x,
-            slider.y - labelSurface->h - 4,
-            labelSurface->w,
-            labelSurface->h
+            slider.y - slider.labelH - 4,
+            slider.labelW,
+            slider.labelH
         };
-        SDL_RenderCopy(renderer, labelTexture, NULL, &labelRect);
-        SDL_FreeSurface(labelSurface);
-        SDL_DestroyTexture(labelTexture);
+        SDL_RenderCopy(renderer, slider.labelTexture, NULL, &labelRect);
     }
+
     // Draw slider track
     SDL_Rect track = {slider.x, slider.y + slider.h / 2 - 2, slider.w, 4};
     SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
     SDL_RenderFillRect(renderer, &track);
 
-    // Calculate knob position from current value
+    // Calculate knob position
     float knobX = get_slider_position(slider);
     SDL_Rect knob = { static_cast<int>(knobX) - 5, slider.y, 10, slider.h };
 
@@ -41,16 +47,17 @@ void render_slider(SDL_Renderer* renderer, Slider& slider) {
     else
         snprintf(buf, sizeof(buf), "%.4f", slider.get_value());
 
-    // Create surface and texture for text
-    SDL_Surface* textSurface = TTF_RenderText_Solid(get_font(), buf, textColor);
-    SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    // Use your render_text function for value text (no caching)
+    int textW = 0, textH = 0;
+    TTF_SizeText(get_font(), buf, &textW, &textH);
 
-    // Position text next to the slider
-    SDL_Rect textRect = {slider.x + slider.w + 10, slider.y, textSurface->w, textSurface->h};
-    SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
-
-    SDL_FreeSurface(textSurface);
-    SDL_DestroyTexture(textTexture);
+    SDL_Rect valueRect = {
+        slider.x + slider.w + 10,      // base position
+        slider.y + (slider.h - textH)/2,  // vertically centered
+        textW,
+        textH
+    };
+    render_text(renderer, buf, textColor, valueRect);
 }
 
 void handle_slider_event(const SDL_Event& e, Slider& slider) {
